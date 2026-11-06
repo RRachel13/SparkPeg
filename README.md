@@ -6,6 +6,14 @@
 
 A clothesline for the things you want to keep in sight. Clip a screenshot, a passage, or a passing thought to the top of your Mac screen. Take it down when you're done.
 
+<p align="center">
+  <a href="https://github.com/RRachel13/SparkPeg/releases/download/v1.1.0/SparkPeg-1.1.0-macOS.zip">
+    <img src="https://img.shields.io/badge/Download_for_macOS-6D5DE7?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="Download for macOS · 下载 Mac 版">
+  </a>
+  <br>
+  <sub>v1.1.0 · macOS 14+ · Apple silicon &amp; Intel</sub>
+</p>
+
 [English](#english) · [简体中文](#简体中文)
 
 ## English
