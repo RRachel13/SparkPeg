@@ -9,10 +9,10 @@ final class TextCapture {
     private var generation = UUID()
     private var pages: [TextCapturePage] = []
     private var previousApp: NSRunningApplication?
-    private var completion: ((String, CGRect, NSScreen) -> Void)?
+    private var completion: ((String, NSScreen) -> Void)?
     private var explainedPermissionFailure = false
 
-    func start(completion: @escaping (String, CGRect, NSScreen) -> Void) {
+    func start(completion: @escaping (String, NSScreen) -> Void) {
         guard !isActive else { return }
         // ScreenCaptureKit is the authority. A CoreGraphics preflight can
         // disagree with the system's visible toggle after a local rebuild;
@@ -111,12 +111,11 @@ final class TextCapture {
             if $0.screen.frame.maxY != $1.screen.frame.maxY { return $0.screen.frame.maxY > $1.screen.frame.maxY }
             return $0.screen.frame.minX < $1.screen.frame.minX
         }
-        guard let first = selected.first, let localRect = first.view.selection.selectedBounds else {
+        guard let first = selected.first else {
             NSSound.beep()
             return
         }
         let text = selected.map { $0.view.selection.text }.joined(separator: "\n")
-        let rect = localRect.offsetBy(dx: first.screen.frame.minX, dy: first.screen.frame.minY)
         let callback = completion
         let screen = first.screen
         close()
@@ -124,7 +123,7 @@ final class TextCapture {
             previousApp.activate(options: [])
         }
         previousApp = nil
-        callback?(text, rect, screen)
+        callback?(text, screen)
     }
 
     func cancel() {

@@ -48,10 +48,9 @@ private func runTests() throws {
     selection.begin(at: CGPoint(x: 1000, y: 1000), additive: false)
     expect(selection.text.isEmpty, "Clicking far from text must clear selection instead of guessing words")
     selection.selectAll()
-    expect(selection.selectedBounds == glyphs.map(\.rect).reduce(.null) { $0.union($1) },
-           "Animation source must encompass exactly the selected glyphs")
+    expect(selection.selectedGlyphs.map(\.id) == glyphs.map(\.id), "Select All must include every recognized glyph in reading order")
     selection.clear()
-    expect(selection.selectedBounds == nil, "Cancelling selection must leave no animation source")
+    expect(selection.selectedGlyphs.isEmpty, "Cancelling selection must clear the selection highlight")
 
     let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     let directory = root.appendingPathComponent("work/text-note-tests-\(UUID().uuidString)")
@@ -209,11 +208,11 @@ private func runTests() throws {
         let bitmap = NSBitmapImageRep(cgImage: raster.cgImage(forProposedRect: nil, context: nil, hints: nil)!)
         let flightInk = inkRect(bitmap)
         expect(!flightInk.isNull && abs(flightInk.height - nativeInk.height) < 0.8,
-               "Both held/flight resolutions must render the same apparent font size as the native landing card")
+               "Both flight resolutions must render the same apparent font size as the native landing card")
         expect(abs(flightInk.minX - nativeInk.minX) < 0.8 && abs(flightInk.minY - nativeInk.minY) < 0.8,
                "Flight and native text must share their first-glyph position, without a handoff jump")
-        expect(raster.size == NSSize(width: 420, height: 280) && abs(bitmap.pixelsWide - resolution) <= 1,
-               "Sharper held previews must retain the original card geometry while increasing raster resolution")
+        expect(raster.size == landingSize && abs(bitmap.pixelsWide - resolution) <= 1,
+               "Sharper previews must retain the native card geometry while increasing raster resolution")
     }
 
     let memory = MemoryDefaults(isolated: true)
@@ -433,9 +432,130 @@ private func runTests() throws {
     expect(remarked.textView.textColor == beforeColor, "Changing remark appearance must never recolor the excerpt")
     let annotatedPreview = TextNote.preview(annotated.text, maxPixels: 800, remark: annotated.remark)!
     let previewCG = annotatedPreview.cgImage(forProposedRect: nil, context: nil, hints: nil)!
-    expect(annotatedPreview.size == preview.size, "Remarks must not alter card geometry or flight animation proportions")
+    expect(annotatedPreview.size.width == preview.size.width, "Remarks must grow a preview vertically without changing its width")
     try NSBitmapImageRep(cgImage: previewCG).representation(using: .png, properties: [:])!
         .write(to: root.appendingPathComponent("work/remark-preview.png"))
+
+    // Folded cards grow to the text and stop at a visual height limit.
+    let compact = TextNote.preview("短便签", maxPixels: 320)!
+    let mediumText = (1...7).map { "完整显示第 \($0) 行" }.joined(separator: "\n")
+    let mediumPreview = TextNote.preview(mediumText, maxPixels: 320)!
+    let veryLong = (1...60).map { "这是第 \($0) 行便签文字" }.joined(separator: "\n")
+    let longPreview = TextNote.preview(veryLong, maxPixels: 320)!
+    expect(compact.size.width == longPreview.size.width && compact.size.height < mediumPreview.size.height
+           && mediumPreview.size.height < longPreview.size.height && longPreview.size.height == Layout.noteMaxHeight,
+           "Folded notes must grow vertically until the height cap")
+    let folded = InlineNoteBody(url: other, text: mediumText, fontSize: originalFontSize, remark: "")
+    folded.frame.size = mediumPreview.size
+    folded.layout()
+    expect(!folded.isTruncated && folded.textView.string.contains("完整显示第 7 行"),
+           "A note that fits the height limit must show all its text")
+    let clipped = InlineNoteBody(url: other, text: veryLong, fontSize: originalFontSize, remark: longRemark)
+    clipped.frame.size = longPreview.size
+    clipped.layout()
+    expect(clipped.isTruncated && !clipped.divider.isHidden,
+           "Very long notes should indicate truncation while leaving room for a remark preview")
+
+    let markdown = """
+    # 标题
+    同一段 **加粗** 和 *斜体*
+    下一行 [链接](https://example.com)
+
+    - 第一项
+    - 第二项
+
+    > 引用
+
+    ```swift
+    let sum = 1 + 2
+    ```
+    """
+    let markdownURL = try TextNote.save(markdown, in: directory)
+    try NoteDocument(text: markdown, remark: "**备注**\n末行").write(to: markdownURL)
+    let heldReader = InlineNoteBody(url: markdownURL, text: markdown, fontSize: originalFontSize, readingOnly: true)
+    heldReader.frame.size = CGSize(width: 300, height: 90)
+    heldReader.layout()
+    let visible = heldReader.textView.attributedString()
+    let content = visible.string as NSString
+    func markdownFont(_ phrase: String) -> NSFont {
+        visible.attribute(.font, at: content.range(of: phrase).location, effectiveRange: nil) as! NSFont
+    }
+    expect(content.hasPrefix("标题\n同一段 加粗 和 斜体\n下一行 链接") && content.contains("• 第一项\n• 第二项")
+           && content.contains("引用") && content.contains("let sum = 1 + 2"),
+           "Markdown should render familiar blocks without dropping the note's line breaks")
+    expect(markdownFont("标题").pointSize > originalFontSize
+           && NSFontManager.shared.traits(of: markdownFont("加粗")).contains(.boldFontMask)
+           && (visible.attribute(.obliqueness, at: content.range(of: "斜体").location, effectiveRange: nil) as? Double ?? 0) > 0
+           && markdownFont("let sum").isFixedPitch,
+           "Markdown heading, emphasis and code must appear with distinct native fonts")
+    expect((visible.attribute(.link, at: content.range(of: "链接").location, effectiveRange: nil) as? URL)?.host == "example.com",
+           "A normal Markdown web link must remain available in the reading view")
+    expect(!heldReader.textView.isEditable && !heldReader.isTruncated && heldReader.remarkView.string == "备注\n末行",
+           "The held view must render the complete read-only note and remark")
+    heldReader.scrollView.contentView.scroll(to: NSPoint(x: 0, y: 600))
+    expect(heldReader.scrollView.documentVisibleRect.maxY >= heldReader.remarkView.superview!.frame.maxY - 1,
+           "The held reader must be able to scroll all the way to the last remark")
+    let markdownEditor = InlineNoteBody(url: markdownURL, text: markdown, fontSize: originalFontSize)
+    markdownEditor.setExpanded(true)
+    expect(markdownEditor.textView.string == markdown && markdownEditor.textView.isEditable,
+           "Double-click editing must retain literal Markdown syntax")
+    let live = markdownEditor.textView
+    func glyph(in view: NSTextView, at index: Int) -> CGGlyph {
+        let manager = view.layoutManager!
+        manager.ensureLayout(for: view.textContainer!)
+        return manager.cgGlyph(at: manager.glyphIndexForCharacter(at: index))
+    }
+    func hidden(in view: NSTextView, at index: Int) -> Bool {
+        let manager = view.layoutManager!
+        manager.ensureLayout(for: view.textContainer!)
+        return manager.propertyForGlyph(at: manager.glyphIndexForCharacter(at: index)).contains(.null)
+    }
+    func moveCaret(_ view: LiveMarkdownTextView, to index: Int) {
+        view.setSelectedRange(NSRange(location: index, length: 0))
+        view.liveSelectionChanged()
+    }
+    let marker = (markdown as NSString).range(of: "- 第一项").location
+    let bullet = glyph(in: live, at: marker)
+    expect(hidden(in: live, at: 0) && bullet != 0,
+           "The expanded editor should draw Markdown rather than showing the original syntax everywhere")
+    expect(live.becomeFirstResponder(), "The expanded note must accept editing focus")
+    moveCaret(live, to: marker + 3)
+    expect(glyph(in: live, at: marker) != bullet && hidden(in: live, at: 0),
+           "Moving the caret to a list line must reveal its hyphen and leave other lines formatted")
+    moveCaret(live, to: 1)
+    expect(!hidden(in: live, at: 0) && glyph(in: live, at: marker) == bullet,
+           "Leaving a list line must restore its bullet and reveal syntax on the newly focused line")
+    let end = live.string.utf16.count
+    moveCaret(live, to: end)
+    live.insertText("\n\n-", replacementRange: live.selectedRange())
+    let newMarker = live.string.utf16.count - 1
+    let hyphen = glyph(in: live, at: newMarker)
+    live.insertText(" ", replacementRange: live.selectedRange())
+    expect(glyph(in: live, at: newMarker) == bullet && hyphen != bullet && live.string.hasSuffix("- "),
+           "Typing a space after a hyphen must render a bullet immediately without replacing the source")
+    live.insertText("你好 👩🏽‍💻", replacementRange: live.selectedRange())
+    expect(glyph(in: live, at: newMarker) == bullet,
+           "The bullet should stay formatted while typing on the new list row")
+    moveCaret(live, to: newMarker + 2)
+    expect(glyph(in: live, at: newMarker) == hyphen,
+           "Returning to the newly authored row must make its hyphen editable")
+    let editedMarkdown = markdown + "\n\n- 你好 👩🏽‍💻"
+    expect(markdownEditor.saveNow() && TextNote.read(markdownURL) == editedMarkdown,
+           "Saving while using live Markdown must keep exact source, including Unicode")
+    let remarkLive = markdownEditor.remarkView
+    expect(hidden(in: remarkLive, at: 0), "Unfocused Markdown remarks should remain formatted")
+    _ = live.resignFirstResponder()
+    _ = remarkLive.becomeFirstResponder()
+    moveCaret(remarkLive, to: 2)
+    expect(!hidden(in: remarkLive, at: 0) && glyph(in: live, at: newMarker) == bullet,
+           "Switching to the remark must render the body again and reveal the selected remark row")
+    _ = remarkLive.resignFirstResponder()
+    markdownEditor.setExpanded(false)
+    expect(markdownEditor.saveNow() && TextNote.read(markdownURL) == editedMarkdown,
+           "Folding a rendered note must never replace Markdown source on disk")
+    markdownEditor.setExpanded(true)
+    expect(markdownEditor.textView.string == editedMarkdown, "Reopening the editor must restore all Markdown markers")
+    markdownEditor.setExpanded(false)
 
     // Real native layout: looser line spacing and a footer which never covers
     // a scrolled line of text, without moving the top text origin on expansion.
@@ -472,8 +592,9 @@ private func runTests() throws {
            "Line gaps must scale with the existing card-size setting")
     reading.setExpanded(false)
     reading.layout()
-    expect(reading.scrollView.frame == reading.bounds && reading.collapseButton.isHidden,
-           "Collapsed cards must regain their original content area without a footer")
+    expect(reading.scrollView.frame.minY == NoteExpansionLayout.collapsedBottom
+           && reading.scrollView.frame.maxY == reading.bounds.maxY && reading.collapseButton.isHidden,
+           "The collapsed card must remove the editing footer and leave only clearance for the remark button")
     reading.setExpanded(true)
     let hit = CGRect(x: -400, y: 80, width: 194, height: 300)
     var didCollapse = false
@@ -642,6 +763,25 @@ private func runTests() throws {
            "Command-Return should submit, leaving ordinary Return for writing multiple lines")
     expect(composer.textView.frame.height >= composer.scrollView.contentSize.height - 1,
            "The empty/short editor must fill the visible input area and accept clicks")
+    let ideaInput = composer.textView
+    expect(composer.panel!.makeFirstResponder(ideaInput), "The idea composer must accept editing focus")
+    let draftStart = ideaInput.string.utf16.count
+    moveCaret(ideaInput, to: draftStart)
+    ideaInput.insertText("##", replacementRange: ideaInput.selectedRange())
+    let beforeSpace = ideaInput.firstRect(forCharacterRange: ideaInput.selectedRange(), actualRange: nil)
+    ideaInput.insertText(" ", replacementRange: ideaInput.selectedRange())
+    let afterSpace = ideaInput.firstRect(forCharacterRange: ideaInput.selectedRange(), actualRange: nil)
+    expect(beforeSpace.height > 0 && afterSpace.height > 0 && abs(beforeSpace.midY - afterSpace.midY) < 2
+           && ideaInput.selectedRange().location == draftStart + 3 && !hidden(in: ideaInput, at: draftStart),
+           "A second-level heading with no content must keep its caret on the current line")
+    ideaInput.setMarkedText("zhong", selectedRange: NSRange(location: 5, length: 0),
+                            replacementRange: ideaInput.selectedRange())
+    expect(ideaInput.hasMarkedText() && ideaInput.string.hasSuffix("## zhong"),
+           "Live rendering must leave marked input and its source range intact")
+    ideaInput.insertText("中", replacementRange: ideaInput.markedRange())
+    expect(!ideaInput.hasMarkedText() && ideaInput.string.hasSuffix("## 中") && hidden(in: ideaInput, at: draftStart),
+           "Committing marked input must retain both the original heading marker and the composed character")
+    _ = composer.panel!.makeFirstResponder(nil)
     let longDraft = String(repeating: "长灵感可以继续写，超出一页可以滚动。\n", count: 100)
     composer.textView.string = longDraft
     composer.textDidChange(Notification(name: NSText.didChangeNotification))
@@ -679,11 +819,12 @@ private func runTests() throws {
         let bitmap = NSBitmapImageRep(cgImage: raster.cgImage(forProposedRect: nil, context: nil, hints: nil)!)
         let rasterInk = inkRect(bitmap)
         expect(!rasterInk.isNull && abs(rasterInk.height - ideaInk.height) < 0.8 && abs(rasterInk.minY - ideaInk.minY) < 0.8,
-               "Authored ideas must keep the same font and header spacing when held previews land")
+               "Authored ideas must keep the same font and header spacing when flight previews land")
     }
     let ideaPreview = TextNote.preview("手写灵感\n与摘录不同", maxPixels: 800, kind: .idea)!
     let ideaCG = ideaPreview.cgImage(forProposedRect: nil, context: nil, hints: nil)!
-    expect(ideaPreview.size == preview.size, "The authored header must retain established flight/card geometry")
+    expect(ideaPreview.size.width == preview.size.width && ideaPreview.size.height >= landingSize.height,
+           "The idea header should fit in a preview with the same width as an excerpt")
     try NSBitmapImageRep(cgImage: ideaCG).representation(using: .png, properties: [:])!
         .write(to: root.appendingPathComponent("work/idea-note-preview.png"))
     for anchor in [CGPoint.zero, CGPoint(x: 0.5, y: 0.5), CGPoint(x: 1, y: 0.2)] {
@@ -738,6 +879,12 @@ private func runTests() throws {
     editingLine.expandedNoteID = nil
     editingLine.scroll(by: .greatestFiniteMagnitude)
     expect(editingLine.scroll == Layout.spacing, "Scrolling must reach the oldest card and stop at the end")
+    editingLine.setHeld(activeID, true)
+    editingLine.scroll(by: -.greatestFiniteMagnitude)
+    editingLine.setHeld(activeID, false)
+    expect(editingLine.scroll == Layout.spacing && editingLine.items.first?.id == activeID
+           && editingLine.items.first?.held == false && editingLine.items.first?.flying == false,
+           "Returning an older note must reveal its original clip without starting a screenshot flight")
     expect(CapturePermissionFailure.isDenied(NSError(domain: SCStreamErrorDomain, code: -3801)),
            "Only a real capture permission denial should trigger the permission explanation")
     expect(!CapturePermissionFailure.isDenied(NSError(domain: SCStreamErrorDomain, code: -3802)),

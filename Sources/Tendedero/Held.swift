@@ -23,13 +23,32 @@ final class Held: NSObject {
 
     static var heldIDs: Set<UUID> { Set(open.keys) }
 
-    static func show(_ id: UUID, url: URL, line: Line, onHangBack: @escaping (UUID, CGRect) -> Void) {
-        guard open[id] == nil,
-              let screen = LinePanel.screenUnderPointer() else { return }
-        // No sharper than the screen can show, so a huge image stays light.
-        let longest = max(screen.frame.width, screen.frame.height) * screen.backingScaleFactor
-        guard let image = makeThumbnail(url, maxPixels: Int(longest)), image.size.width > 0 else { return }
-        open[id] = Held(id: id, url: url, image: image, on: screen, line: line, onHangBack: onHangBack)
+    @discardableResult
+    static func show(_ id: UUID, url: URL, line: Line, onHangBack: @escaping (UUID, CGRect) -> Void) -> Bool {
+        guard open[id] == nil, let screen = LinePanel.screenUnderPointer() else { return false }
+        let color = IdeaPalette.color(line.items.first(where: { $0.id == id })?.ideaColorHex)
+        let view: HeldView
+        let natural: NSSize
+        if TextNote.isNote(url) {
+            guard let document = try? NoteDocument.read(url) else { return false }
+            let note = InlineNoteBody(url: url, text: document.text, fontSize: NoteExpansionLayout.fontSize(scale: Layout.size.scale),
+                                      remark: document.remark, kind: document.kind, readingOnly: true)
+            let width = max(220, min(360, floor(screen.visibleFrame.width * 0.7)))
+            let height = note.preferredHeight(width: width - HeldView.border * 2)
+            natural = NSSize(width: width, height: max(104, min(floor(screen.visibleFrame.height * 0.7),
+                              height + HeldView.noteHeader + HeldView.border)))
+            view = HeldView(note: note, color: color)
+        } else {
+            // No sharper than the screen can show, so a huge image stays light.
+            let scale = screen.backingScaleFactor
+            let longest = max(screen.frame.width, screen.frame.height) * scale
+            guard let image = makeThumbnail(url, maxPixels: Int(longest)), image.size.width > 0 else { return false }
+            natural = NSSize(width: image.size.width / scale + HeldView.border * 2,
+                             height: image.size.height / scale + HeldView.border * 2)
+            view = HeldView(image: image, color: color)
+        }
+        open[id] = Held(id: id, view: view, natural: natural, on: screen, line: line, onHangBack: onHangBack)
+        return true
     }
 
     static func hangBack(_ id: UUID) { open[id]?.hangBack() }
@@ -46,28 +65,26 @@ final class Held: NSObject {
         }
     }
 
-    private init(id: UUID, url: URL, image: NSImage, on screen: NSScreen, line: Line,
+    private init(id: UUID, view: HeldView, natural: NSSize, on screen: NSScreen, line: Line,
                  onHangBack: @escaping (UUID, CGRect) -> Void) {
         self.id = id
         self.onHangBack = onHangBack
-        let scale = screen.backingScaleFactor
-        natural = NSSize(width: image.size.width / scale + HeldView.border * 2,
-                         height: image.size.height / scale + HeldView.border * 2)
-        view = HeldView(image: image, color: IdeaPalette.color(line.items.first(where: { $0.id == id })?.ideaColorHex))
+        self.natural = natural
+        self.view = view
         panel = HeldPanel(content: view)
         super.init()
         view.onHangBack = { [weak self] in self?.hangBack() }
         view.onZoom = { [weak self] factor, anchor in self?.zoom(by: factor, around: anchor) }
         view.onActualSize = { [weak self] in self?.actualSize() }
         view.onCopy = { line.copy(id) }
-        if TextNote.isNote(url) {
+        if view.note != nil {
             view.onAskGPT = { line.askGPT(id) }
         }
         view.onMarkup = { line.markup(id) }
         view.onQuickLook = { line.quickLook(id) }
         // Stretched from an edge or a corner, it keeps the photo's shape.
-        panel.contentAspectRatio = natural
-        panel.minSize = NSSize(width: 80, height: 80)
+        if view.note == nil { panel.contentAspectRatio = natural }
+        panel.minSize = NSSize(width: view.note == nil ? 80 : 180, height: 80)
         panel.setFrame(startFrame(on: screen), display: false)
         panel.orderFrontRegardless()
     }
@@ -133,8 +150,11 @@ private final class HeldPanel: NSPanel {
 /// The photo in a glass frame like the cards on the line. Its only control
 /// is the button in the corner, which hangs it back, shown on hover like the
 /// cards' own; everything else is in its menu.
-private final class HeldView: NSVisualEffectView {
+private final class HeldView: NSView {
     static let border: CGFloat = 6
+    static let noteHeader: CGFloat = 26
+    let note: InlineNoteBody?
+    private let surface: NSVisualEffectView
 
     var onHangBack: () -> Void = {}
     var onZoom: (CGFloat, NSPoint) -> Void = { _, _ in }
@@ -148,29 +168,48 @@ private final class HeldView: NSVisualEffectView {
     private let photo = CALayer()
     private let hangBackButton = CornerButton(symbol: "arrow.up.to.line")
 
-    init(image: NSImage, color: NSColor? = nil) {
+    init(image: NSImage? = nil, note: InlineNoteBody? = nil, color: NSColor? = nil) {
+        self.note = note
+        if note != nil {
+            let frost = FrostedNoteSurface(frame: .zero)
+            frost.setTint(color)
+            surface = frost
+        } else {
+            surface = NSVisualEffectView(frame: .zero)
+            surface.material = .popover
+            surface.blendingMode = .behindWindow
+            surface.state = .active
+            surface.wantsLayer = true
+            surface.layer?.cornerRadius = 12
+            surface.layer?.masksToBounds = true
+            surface.layer?.borderWidth = 0.5
+            surface.layer?.borderColor = NSColor.white.withAlphaComponent(0.45).cgColor
+            tint.backgroundColor = color?.withAlphaComponent(0.45).cgColor ?? NSColor.clear.cgColor
+            surface.layer?.addSublayer(tint)
+            photo.contents = image
+            photo.contentsGravity = .resizeAspect
+            photo.cornerRadius = 7
+            photo.masksToBounds = true
+            surface.layer?.addSublayer(photo)
+        }
         super.init(frame: .zero)
-        material = .popover
-        blendingMode = .behindWindow
-        state = .active
-        wantsLayer = true
-        layer?.cornerRadius = 12
-        layer?.masksToBounds = true
-        layer?.borderWidth = 0.5
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.45).cgColor
-        tint.backgroundColor = color?.withAlphaComponent(0.45).cgColor ?? NSColor.clear.cgColor
-        layer?.addSublayer(tint)
-        photo.contents = image
-        photo.contentsGravity = .resizeAspect
-        photo.cornerRadius = 7
-        photo.masksToBounds = true
-        layer?.addSublayer(photo)
+        addSubview(surface)
+        if let note {
+            appearance = NSAppearance(named: .aqua)
+            addSubview(note)
+            for text in [note.textView, note.remarkView] {
+                text.onReadMenu = { [weak self] event in self?.rightMouseDown(with: event) }
+                text.onCollapse = { [weak self] in self?.onHangBack() }
+            }
+        }
         hangBackButton.alphaValue = 0
         hangBackButton.onPress = { [weak self] in self?.onHangBack() }
         hangBackButton.setAccessibilityLabel(L("Hang back"))
         addSubview(hangBackButton)
-        setAccessibilityElement(true)
-        setAccessibilityRole(.image)
+        if note == nil {
+            setAccessibilityElement(true)
+            setAccessibilityRole(.image)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -179,11 +218,20 @@ private final class HeldView: NSVisualEffectView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        surface.frame = bounds
         tint.frame = bounds
         photo.frame = bounds.insetBy(dx: Self.border, dy: Self.border)
         photo.contentsScale = window?.backingScaleFactor ?? 2
         CATransaction.commit()
+        note?.frame = NSRect(x: Self.border, y: Self.border, width: max(1, bounds.width - Self.border * 2),
+                             height: max(1, bounds.height - Self.noteHeader - Self.border))
         hangBackButton.frame = NSRect(x: 9, y: bounds.height - 29, width: 20, height: 20)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        if hit === surface || hit.isDescendant(of: surface) { return self }
+        return hit
     }
 
     override func updateTrackingAreas() {
@@ -214,13 +262,13 @@ private final class HeldView: NSVisualEffectView {
     }
 
     override func magnify(with event: NSEvent) {
-        guard let window else { return }
+        guard note == nil, let window else { return }
         onZoom(1 + event.magnification, NSEvent.mouseLocation.clamped(to: window.frame))
     }
 
     /// A mouse wheel zooms too: there is nothing to scroll in a photo.
     override func scrollWheel(with event: NSEvent) {
-        guard let window, event.scrollingDeltaY != 0 else { return }
+        guard note == nil, let window, event.scrollingDeltaY != 0 else { return }
         let step = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY * 0.005 : event.scrollingDeltaY * 0.05
         onZoom(1 + step, NSEvent.mouseLocation.clamped(to: window.frame))
     }

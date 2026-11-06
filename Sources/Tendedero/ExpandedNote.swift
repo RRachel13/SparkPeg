@@ -10,6 +10,8 @@ enum NoteExpansionLayout {
 
     static func fontSize(scale: CGFloat) -> CGFloat { 11.5 * scale }
     static let footerHeight: CGFloat = 30
+    static let ideaHeader: CGFloat = 20
+    static let collapsedBottom: CGFloat = 10
 }
 
 /// The same paragraph style is used on the card, while editing and in flight.
@@ -119,10 +121,18 @@ struct InlineNoteEditor: NSViewRepresentable {
     }
 }
 
-final class ExpandedNoteTextView: NSTextView {
+final class ExpandedNoteTextView: LiveMarkdownTextView {
     var onAsk: (() -> Void)?
     var onCollapse: (() -> Void)?
     var placeholder: String?
+    var onReadMenu: ((NSEvent) -> Void)?
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        onReadMenu != nil || super.acceptsFirstMouse(for: event)
+    }
+    override func rightMouseDown(with event: NSEvent) {
+        if let onReadMenu { onReadMenu(event) }
+        else { super.rightMouseDown(with: event) }
+    }
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         if string.isEmpty, let placeholder {
@@ -134,6 +144,7 @@ final class ExpandedNoteTextView: NSTextView {
     }
     override func cancelOperation(_ sender: Any?) { onCollapse?() }
     override func menu(for event: NSEvent) -> NSMenu? {
+        guard isEditable else { return super.menu(for: event) }
         let menu = super.menu(for: event) ?? NSMenu()
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(L("Ask GPT")) { [weak self] in self?.onAsk?() })
@@ -160,6 +171,13 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
     private let document = NoteFlowView()
     private let excerptClip = NoteFlowView()
     private let remarkClip = NoteFlowView()
+    private let excerptMore = NSTextField(labelWithString: "…")
+    private let remarkMore = NSTextField(labelWithString: "…")
+    private let readingOnly: Bool
+    private let noteColor: NSColor
+    private var rendersMarkdown: Bool { !isExpanded }
+    private var scrolls: Bool { isExpanded || readingOnly }
+    var isTruncated: Bool { !excerptMore.isHidden || !remarkMore.isHidden }
     let collapseButton = NSButton(image: NSImage(systemSymbolName: "chevron.up", accessibilityDescription: nil)!, target: nil, action: nil)
     private(set) var isExpanded = false
     private(set) var isAddingRemark = false
@@ -172,8 +190,11 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
     var onSaved: (() -> Void)?
     var onCollapse: (() -> Void)?
 
-    init(url: URL, text: String, fontSize: CGFloat, remark: String? = nil, kind: NoteKind? = nil) {
+    init(url: URL, text: String, fontSize: CGFloat, remark: String? = nil, kind: NoteKind? = nil,
+         readingOnly: Bool = false, followsAppearance: Bool = false) {
         self.url = url
+        self.readingOnly = readingOnly
+        noteColor = followsAppearance ? .labelColor : NSColor(calibratedWhite: 0.14, alpha: 1)
         let stored = remark == nil || kind == nil ? try? NoteDocument.read(url) : nil
         let remark = remark ?? stored?.remark ?? ""
         saved = NoteDocument(text: text, remark: remark, kind: kind ?? stored?.kind ?? .excerpt,
@@ -184,8 +205,8 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
         layer?.backgroundColor = NSColor.clear.cgColor
         layer?.cornerRadius = 12
         layer?.masksToBounds = true
-        appearance = NSAppearance(named: .aqua)
-        scrollView.hasVerticalScroller = false
+        if !followsAppearance { appearance = NSAppearance(named: .aqua) }
+        scrollView.hasVerticalScroller = readingOnly
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
@@ -199,10 +220,10 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
             clip.wantsLayer = true
             clip.layer?.masksToBounds = true
         }
-        configure(textView, text: text, label: L("Note text"))
-        configure(remarkView, text: remark, label: L("Note remark"))
+        configure(textView, label: L("Note text"))
+        configure(remarkView, label: L("Note remark"))
         remarkView.placeholder = L("Write a remark…")
-        updateRemarkColor()
+        displaySavedContent()
         colorObserver = NotificationCenter.default.addObserver(forName: RemarkAppearance.changed, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateRemarkColor() }
         }
@@ -213,6 +234,12 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
         document.addSubview(excerptClip)
         document.addSubview(divider)
         document.addSubview(remarkClip)
+        for label in [excerptMore, remarkMore] {
+            label.isHidden = true
+            label.alignment = .left
+            label.setAccessibilityLabel(L("More text"))
+            document.addSubview(label)
+        }
         scrollView.documentView = document
         addSubview(scrollView)
         collapseButton.target = self
@@ -235,11 +262,12 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
         if let colorObserver { NotificationCenter.default.removeObserver(colorObserver) }
     }
 
-    private func configure(_ view: ExpandedNoteTextView, text: String, label: String) {
+    private func configure(_ view: ExpandedNoteTextView, label: String) {
+        view.onLiveLayoutChange = { [weak self] in self?.needsLayout = true }
         view.isRichText = false
         view.allowsUndo = true
         view.font = .systemFont(ofSize: currentFontSize)
-        view.textColor = NSColor(calibratedWhite: 0.14, alpha: 1)
+        view.textColor = noteColor
         view.insertionPointColor = .darkGray
         view.drawsBackground = false
         view.backgroundColor = .clear
@@ -253,10 +281,8 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
         view.textContainer?.containerSize = NSSize(width: 120, height: CGFloat.greatestFiniteMagnitude)
         view.isAutomaticQuoteSubstitutionEnabled = false
         view.isAutomaticDashSubstitutionEnabled = false
-        view.string = text
-        applyParagraphStyle(to: view)
         view.isEditable = false
-        view.isSelectable = false
+        view.isSelectable = readingOnly
         view.delegate = self
         view.setAccessibilityLabel(label)
         view.onCollapse = { [weak self] in
@@ -265,22 +291,38 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
         }
         view.onAsk = { [weak self] in
             guard let self, self.saveNow() else { return }
-            GPTDraftLink.open(self.textView.string)
+            GPTDraftLink.open(self.saved.text)
         }
     }
 
-    private func applyParagraphStyle(to view: NSTextView) {
-        let style = NoteTypography.paragraph(fontSize: currentFontSize)
-        view.defaultParagraphStyle = style
-        view.typingAttributes[.paragraphStyle] = style
-        view.textStorage?.addAttribute(.paragraphStyle, value: style,
-                                      range: NSRange(location: 0, length: view.string.utf16.count))
+    private func display(_ source: String, in view: ExpandedNoteTextView, color: NSColor) {
+        view.disableLiveMarkdown()
+        view.font = .systemFont(ofSize: currentFontSize)
+        view.defaultParagraphStyle = NoteTypography.paragraph(fontSize: currentFontSize)
+        view.textColor = color
+        if rendersMarkdown {
+            view.textStorage?.setAttributedString(NoteMarkdown.render(source, size: currentFontSize, color: color))
+        } else {
+            view.string = source
+            view.enableLiveMarkdown(size: currentFontSize, color: color)
+        }
+    }
+
+    private func displaySavedContent() {
+        display(saved.text, in: textView, color: noteColor)
+        display(saved.remark, in: remarkView, color: RemarkAppearance.color())
+        remarkView.insertionPointColor = RemarkAppearance.color()
+        needsLayout = true
     }
 
     private func updateRemarkColor() {
-        remarkView.textColor = RemarkAppearance.color()
-        remarkView.insertionPointColor = RemarkAppearance.color()
-        remarkView.typingAttributes[.foregroundColor] = RemarkAppearance.color()
+        let color = RemarkAppearance.color()
+        if rendersMarkdown {
+            display(saved.remark, in: remarkView, color: color)
+        } else {
+            remarkView.enableLiveMarkdown(size: currentFontSize, color: color)
+        }
+        remarkView.insertionPointColor = color
     }
 
     func setKindMarkVisible(_ visible: Bool) { showKindMark = visible; needsLayout = true }
@@ -288,18 +330,20 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
     func setFontSize(_ size: CGFloat) {
         guard size != currentFontSize else { return }
         currentFontSize = size
-        textView.font = .systemFont(ofSize: size)
-        remarkView.font = .systemFont(ofSize: size)
-        applyParagraphStyle(to: textView)
-        applyParagraphStyle(to: remarkView)
+        display(rendersMarkdown ? saved.text : textView.string, in: textView, color: noteColor)
+        updateRemarkColor()
         needsLayout = true
     }
 
     func setExpanded(_ expanded: Bool) {
-        guard expanded != isExpanded else { return }
-        if !expanded { _ = saveNow() }
+        guard !readingOnly, expanded != isExpanded else { return }
+        if !expanded && !saveNow() { return }
         isExpanded = expanded
-        for view in [textView, remarkView] { view.isEditable = expanded; view.isSelectable = expanded }
+        for view in [textView, remarkView] {
+            view.isEditable = expanded
+            view.isSelectable = expanded || readingOnly
+        }
+        displaySavedContent()
         scrollView.hasVerticalScroller = expanded
         collapseButton.isHidden = !expanded
         if expanded {
@@ -346,12 +390,11 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
     func refreshIfNotEditing() {
         guard !isExpanded, let updated = try? NoteDocument.read(url), updated != saved else { return }
         saved = updated
-        textView.string = updated.text
-        remarkView.string = updated.remark
-        applyParagraphStyle(to: textView)
-        applyParagraphStyle(to: remarkView)
-        updateRemarkColor()
-        needsLayout = true
+        displaySavedContent()
+    }
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+        (notification.object as? LiveMarkdownTextView)?.liveSelectionChanged()
     }
 
     func textDidChange(_ notification: Notification) {
@@ -366,6 +409,7 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
     @discardableResult
     func saveNow() -> Bool {
         saveTimer?.invalidate()
+        guard !rendersMarkdown else { return true }
         let remark = remarkView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : remarkView.string
         let updated = NoteDocument(text: textView.string, remark: remark, kind: saved.kind, colorHex: saved.colorHex)
         guard updated != saved else { return true }
@@ -393,22 +437,69 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
         return ceil(manager.usedRect(for: container).height) + view.textContainerInset.height * 2
     }
 
+    private var header: CGFloat { saved.kind == .idea ? NoteExpansionLayout.ideaHeader : 0 }
+    private var hasRemark: Bool {
+        !(rendersMarkdown ? saved.remark : remarkView.string).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || (isExpanded && isAddingRemark)
+    }
+
+    /// Size the folded card from the same text layout used when it draws.
+    func preferredHeight(width: CGFloat) -> CGFloat {
+        var height = textHeight(textView, width: width) + header
+        if hasRemark { height += 6 + textHeight(remarkView, width: width) }
+        return height + (scrolls ? 0 : NoteExpansionLayout.collapsedBottom)
+    }
+
+    /// End the preview at a complete glyph line and mark the hidden remainder.
+    private func previewHeight(_ view: NSTextView, natural: CGFloat, budget: CGFloat,
+                               marker: NSTextField, y: CGFloat, width: CGFloat) -> CGFloat {
+        marker.isHidden = natural <= budget
+        guard natural > budget, let manager = view.layoutManager, let container = view.textContainer else {
+            return min(natural, budget)
+        }
+        let markerHeight = ceil(currentFontSize * 1.15)
+        let top = view.textContainerInset.height
+        var last: CGFloat = 0
+        let limit = max(0, budget - top - markerHeight)
+        manager.enumerateLineFragments(forGlyphRange: manager.glyphRange(for: container)) { _, used, _, _, stop in
+            if used.maxY > limit { stop.pointee = true }
+            else { last = used.maxY }
+        }
+        marker.font = .systemFont(ofSize: currentFontSize)
+        marker.textColor = view === remarkView ? RemarkAppearance.color() : noteColor.withAlphaComponent(0.65)
+        marker.frame = NSRect(x: view.textContainerInset.width + 5, y: y + top + last,
+                              width: max(1, width - 26), height: markerHeight)
+        return min(budget, top + last + markerHeight)
+    }
+
     override func layout() {
         super.layout()
-        // Reserve only the bottom edge for controls. The top text position
-        // never changes, so expansion needs no separate text translation.
         let footer = isExpanded ? NoteExpansionLayout.footerHeight : 0
-        let header: CGFloat = saved.kind == .idea ? 20 : 0
+        let bottom = scrolls ? 0 : NoteExpansionLayout.collapsedBottom
         kindMark.isHidden = saved.kind != .idea || !showKindMark
         kindMark.frame = NSRect(x: 11, y: bounds.height - 18, width: 12, height: 12)
-        scrollView.frame = NSRect(x: 0, y: footer, width: bounds.width, height: max(1, bounds.height - footer - header))
+        scrollView.frame = NSRect(x: 0, y: footer + bottom, width: bounds.width,
+                                  height: max(1, bounds.height - footer - bottom - header))
         scrollView.tile()
         let width = scrollView.contentSize.width
         let viewport = scrollView.contentSize.height
-        let hasRemark = !remarkView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (isExpanded && isAddingRemark)
         let sourceHeight = textHeight(textView, width: width)
-        let quoteHeight = isExpanded ? max(sourceHeight, hasRemark ? 36 : viewport) : (hasRemark ? floor(viewport * 0.57) : viewport)
-        excerptClip.frame = NSRect(x: 0, y: 0, width: width, height: quoteHeight)
+        let hasRemark = self.hasRemark
+        let remarkHeight = hasRemark ? textHeight(remarkView, width: width) : 0
+        let quoteHeight: CGFloat
+        excerptMore.isHidden = true
+        remarkMore.isHidden = true
+        if scrolls {
+            quoteHeight = max(sourceHeight, hasRemark ? 36 : viewport)
+        } else {
+            let reserved = hasRemark ? 6 + min(remarkHeight, currentFontSize * 3 + 18) : 0
+            let budget = max(1, viewport - reserved)
+            quoteHeight = sourceHeight > budget
+                ? previewHeight(textView, natural: sourceHeight, budget: budget, marker: excerptMore, y: 0, width: width)
+                : (hasRemark ? sourceHeight : viewport)
+        }
+        let quoteClipHeight = excerptMore.isHidden ? quoteHeight : excerptMore.frame.minY
+        excerptClip.frame = NSRect(x: 0, y: 0, width: width, height: quoteClipHeight)
         textView.frame = NSRect(x: 0, y: 0, width: width, height: max(sourceHeight, quoteHeight))
         divider.isHidden = !hasRemark
         remarkClip.isHidden = !hasRemark
@@ -416,10 +507,12 @@ final class InlineNoteBody: NSView, NSTextViewDelegate {
         if hasRemark {
             divider.frame = NSRect(x: 10, y: quoteHeight + 2, width: max(1, width - 20), height: 0.5)
             let remarkTop = quoteHeight + 6
-            let height = textHeight(remarkView, width: width)
-            let visibleHeight = isExpanded ? max(80, height) : max(1, viewport - remarkTop)
-            remarkClip.frame = NSRect(x: 0, y: remarkTop, width: width, height: visibleHeight)
-            remarkView.frame = NSRect(x: 0, y: 0, width: width, height: max(height, visibleHeight))
+            let visibleHeight = scrolls ? max(isExpanded ? 80 : 0, remarkHeight)
+                : previewHeight(remarkView, natural: remarkHeight, budget: max(1, viewport - remarkTop),
+                                marker: remarkMore, y: remarkTop, width: width)
+            let clipHeight = remarkMore.isHidden ? visibleHeight : remarkMore.frame.minY - remarkTop
+            remarkClip.frame = NSRect(x: 0, y: remarkTop, width: width, height: clipHeight)
+            remarkView.frame = NSRect(x: 0, y: 0, width: width, height: max(remarkHeight, visibleHeight))
             documentHeight = remarkTop + visibleHeight + (isExpanded ? 24 : 0)
         }
         document.setFrameSize(NSSize(width: width, height: max(viewport, documentHeight)))

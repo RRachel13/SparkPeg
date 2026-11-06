@@ -193,16 +193,9 @@ private struct ArchivePreview: View {
                 if let source { Button(L("Locate original")) { onLocateOriginal?(source) } }
             }
             if let note {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(note.text).frame(maxWidth: .infinity, alignment: .leading)
-                        if !note.remark.isEmpty {
-                            Divider()
-                            Text(note.remark).foregroundStyle(Color(nsColor: RemarkAppearance.color()))
-                        }
-                    }
-                    .textSelection(.enabled)
-                }
+                ArchivedNoteBody(url: url, note: note)
+                    .id(url)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let image {
                 Image(nsImage: image).resizable().scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -219,4 +212,17 @@ private struct ArchivePreview: View {
             }
         }
     }
+}
+
+
+private struct ArchivedNoteBody: NSViewRepresentable {
+    let url: URL
+    let note: NoteDocument
+
+    func makeNSView(context: Context) -> InlineNoteBody {
+        InlineNoteBody(url: url, text: note.text, fontSize: 13, remark: note.remark, kind: note.kind,
+                       readingOnly: true, followsAppearance: true)
+    }
+
+    func updateNSView(_ nsView: InlineNoteBody, context: Context) {}
 }

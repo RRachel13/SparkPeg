@@ -22,6 +22,8 @@ struct Pegged: Identifiable, Equatable {
     /// Taken off the line to hold in front of you. Its clip waits empty
     /// until it comes back.
     var held = false
+    /// Returning a note starts a fresh instance of the normal hanging motion.
+    var hangRevision = 0
     /// Hung from another app with Hang on Tendedero, rather than pinned
     /// from the photos that came and went. Always pinned.
     var byHand = false
@@ -30,7 +32,7 @@ struct Pegged: Identifiable, Equatable {
     var isTextNote: Bool { TextNote.isNote(url) }
 
     static func == (a: Pegged, b: Pegged) -> Bool {
-        a.id == b.id && a.falling == b.falling && a.flying == b.flying && a.kept == b.kept && a.byHand == b.byHand && a.held == b.held && a.thumb === b.thumb && a.noteKind == b.noteKind && a.ideaColorHex == b.ideaColorHex
+        a.id == b.id && a.falling == b.falling && a.flying == b.flying && a.kept == b.kept && a.byHand == b.byHand && a.held == b.held && a.hangRevision == b.hangRevision && a.thumb === b.thumb && a.noteKind == b.noteKind && a.ideaColorHex == b.ideaColorHex
     }
 }
 
@@ -115,14 +117,14 @@ final class Line: ObservableObject {
     /// Both OCR capture and native Services create the same kind of card.
     @discardableResult
     func hangText(_ text: String, in directory: URL = TextNote.folder,
-                  trimEdges: Bool = true, flying: Bool = false, kind: NoteKind = .excerpt,
+                  trimEdges: Bool = true, kind: NoteKind = .excerpt,
                   source: NoteSource? = nil) throws -> UUID {
         let url = try TextNote.save(text, in: directory, trimEdges: trimEdges, kind: kind)
         if let source, kind == .excerpt {
             do { try source.write(to: url) }
             catch { log.error("Could not attach the source to a text note") }
         }
-        guard let id = hang(url, flying: flying) else {
+        guard let id = hang(url) else {
             try? FileManager.default.removeItem(at: url)
             throw CocoaError(.fileReadUnknown)
         }
@@ -523,9 +525,28 @@ final class Line: ObservableObject {
 
     /// Off the line and into your hand, or back onto its clip.
     func setHeld(_ id: UUID, _ held: Bool) {
-        guard let i = items.firstIndex(where: { $0.id == id && !$0.falling }) else { return }
-        items[i].held = held
-        if !held { items[i].flying = true }
+        guard let i = items.firstIndex(where: { $0.id == id && !$0.falling && $0.held != held }) else { return }
+        var item = items[i]
+        item.held = held
+        if !held {
+            if item.isTextNote {
+                scrollToReturnedNote(at: i)
+                item.hangRevision += 1
+            } else {
+                item.flying = true
+            }
+        }
+        items[i] = item
+    }
+
+    private func scrollToReturnedNote(at index: Int) {
+        guard canScroll, expandedNoteID == nil else { return }
+        let pinned = Layout.anchorsPinned(pinnedLead, visible: visibleCount) ? pinnedLead : 0
+        guard index >= pinned else { return }
+        let leftmost = items.count - visibleCount + pinned
+        let minimum = CGFloat(leftmost - index) * Layout.spacing
+        let maximum = CGFloat(items.count - 1 - index) * Layout.spacing
+        scroll = min(maximumScroll, max(0, min(maximum, max(minimum, scroll))))
     }
 
     // MARK: Breeze

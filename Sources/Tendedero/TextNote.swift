@@ -1,6 +1,6 @@
 import AppKit
 
-/// Notes remain UTF-8 text files. Only their on-line preview is rendered;
+/// Notes remain UTF-8 text files. Reading views render Markdown;
 /// copying, dragging, opening and asking GPT use the original text.
 enum TextNote {
     static func isNote(_ url: URL) -> Bool { url.pathExtension.lowercased() == "txt" }
@@ -37,16 +37,15 @@ enum TextNote {
         return url
     }
 
-    /// Held cards and the flight must use the very same text layout as the
-    /// collapsed editable card. A separate 30-point/420px layout used to land
-    /// at a smaller font and visibly jump when the native editor faded in.
+    /// Flight and hanging card use the same measured content area and font.
     @MainActor
     static func preview(_ text: String, maxPixels: Int, remark: String = "", kind: NoteKind = .excerpt) -> NSImage? {
-        let canvas = NSSize(width: 420, height: 280)
-        let card = PeggedView.photoSize(for: canvas)
         let view = InlineNoteBody(url: URL(fileURLWithPath: "/.sideline-preview-only"),
-            text: String(text.prefix(6000)), fontSize: NoteExpansionLayout.fontSize(scale: Layout.size.scale),
-            remark: String(remark.prefix(6000)), kind: kind)
+            text: text, fontSize: NoteExpansionLayout.fontSize(scale: Layout.size.scale),
+            remark: remark, kind: kind)
+        let width = Layout.cardWidth - 14
+        let height = min(Layout.noteMaxHeight, max(width * 2 / 3, view.preferredHeight(width: width)))
+        let card = NSSize(width: width, height: height)
         view.frame = NSRect(origin: .zero, size: card)
         view.layoutSubtreeIfNeeded()
         let pixels = max(1, maxPixels)
@@ -57,9 +56,7 @@ enum TextNote {
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
         bitmap.size = card
         view.cacheDisplay(in: view.bounds, to: bitmap)
-        // Keep the existing image geometry; only its rasterization changes.
-        bitmap.size = canvas
-        let image = NSImage(size: canvas)
+        let image = NSImage(size: card)
         image.addRepresentation(bitmap)
         return image
     }

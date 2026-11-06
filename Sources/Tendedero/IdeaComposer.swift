@@ -18,7 +18,7 @@ struct IdeaDraftStore {
     }
 }
 
-final class IdeaInputView: NSTextView {
+final class IdeaInputView: LiveMarkdownTextView {
     var onDismiss: (() -> Void)?
     override func cancelOperation(_ sender: Any?) { onDismiss?() }
     override func draw(_ dirtyRect: NSRect) {
@@ -117,8 +117,9 @@ final class IdeaComposer: NSObject, NSTextViewDelegate, NSWindowDelegate {
         guard let panel else { return }
         let area = (screen ?? LinePanel.screenUnderPointer())?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1000, height: 800)
         panel.setFrame(Self.centeredFrame(in: area), display: false)
+        textView.disableLiveMarkdown()
         textView.string = draft.read()
-        applyTextStyle()
+        textView.enableLiveMarkdown(size: 17, color: NSColor(calibratedWhite: 0.16, alpha: 1))
         errorLabel.stringValue = ""
         textView.undoManager?.removeAllActions()
         textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
@@ -165,6 +166,10 @@ final class IdeaComposer: NSObject, NSTextViewDelegate, NSWindowDelegate {
         return true
     }
 
+    func textViewDidChangeSelection(_ notification: Notification) {
+        textView.liveSelectionChanged()
+    }
+
     func textDidChange(_ notification: Notification) {
         textView.needsDisplay = true
         layoutText()
@@ -209,13 +214,6 @@ final class IdeaComposer: NSObject, NSTextViewDelegate, NSWindowDelegate {
     }
 
     private func updateSubmit() { submitButton.isEnabled = !textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    private func applyTextStyle() {
-        let style = NoteTypography.paragraph(fontSize: 17)
-        textView.defaultParagraphStyle = style
-        textView.typingAttributes = [.font: NSFont.systemFont(ofSize: 17), .foregroundColor: NSColor(calibratedWhite: 0.16, alpha: 1), .paragraphStyle: style]
-        textView.textStorage?.addAttributes(textView.typingAttributes, range: NSRange(location: 0, length: textView.string.utf16.count))
-    }
-
     private func buildPanel() {
         let panel = IdeaComposerPanel()
         panel.delegate = self
@@ -279,6 +277,7 @@ final class IdeaComposer: NSObject, NSTextViewDelegate, NSWindowDelegate {
         textView.textContainer?.heightTracksTextView = false
         textView.textContainer?.containerSize = NSSize(width: 380, height: CGFloat.greatestFiniteMagnitude)
         textView.delegate = self
+        textView.onLiveLayoutChange = { [weak self] in self?.layoutText() }
         textView.setAccessibilityLabel(L("Idea text"))
         textView.onDismiss = { [weak self] in _ = self?.dismiss() }
         scrollView.documentView = textView

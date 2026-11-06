@@ -60,8 +60,8 @@ final class CaptureFlight {
     ///   - to: the card's frame on the line, in screen coordinates, unrotated.
     ///   - tilt: the card's resting tilt in degrees, clockwise, as SwiftUI uses.
     static func fly(image: CGImage, from: CGRect, to: CGRect, tilt: CGFloat, on screen: NSScreen,
-                    ideaColor: NSColor? = nil, completion: @escaping () -> Void) {
-        let flight = CaptureFlight(image: image, from: from, to: to, tilt: tilt, screen: screen, ideaColor: ideaColor)
+                    completion: @escaping () -> Void) {
+        let flight = CaptureFlight(image: image, from: from, to: to, tilt: tilt, screen: screen)
         current.append(flight)
         flight.completion = { [weak flight] in
             completion()
@@ -88,7 +88,8 @@ final class CaptureFlight {
         flight.run()
     }
 
-    private init(image: CGImage, from: CGRect, to: CGRect, tilt: CGFloat, screen: NSScreen, ideaColor: NSColor? = nil) {
+    private init(image: CGImage, from: CGRect, to: CGRect, tilt: CGFloat, screen: NSScreen,
+                 ideaColor: NSColor? = nil) {
         self.from = from
         self.to = to
         self.tilt = tilt
@@ -202,7 +203,7 @@ final class CaptureFlight {
         let w = lerp(from.width, to.width), h = lerp(from.height, to.height)
         let topX = lerp(from.midX, to.midX) - origin.x
         let topY = lerp(from.maxY, to.maxY) - origin.y + sin(.pi * k) * Self.arc
-        let inset = 4 * k
+        let inset = Frame.inset * k
         let radius = lerp(0, 16)
 
         CATransaction.begin()

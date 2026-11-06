@@ -24,7 +24,8 @@ enum Layout {
     static var photoMaxHeight: CGFloat { (104 * size.scale).rounded() }
     static var cardWidth: CGFloat { (150 * size.scale).rounded() }
     static var spacing: CGFloat { cardWidth + 24 }
-    static var panelHeight: CGFloat { photoMaxHeight + 106 }
+    static var noteMaxHeight: CGFloat { (196 * size.scale).rounded() }
+    static var panelHeight: CGFloat { max(photoMaxHeight, noteMaxHeight) + 106 }
     static let ropeTop: CGFloat = 10
     static let pinAbove: CGFloat = 9.5
 
@@ -116,6 +117,7 @@ struct LineView: View {
                     let itemHeight = expanded ? line.expandedNoteSize.height + 40 : Layout.panelHeight - ropeY
                     if x > -Layout.cardWidth && x < width + Layout.cardWidth {
                         PeggedView(item: item, line: line, reportsHitRect: !out)
+                            .id(item.hangRevision)
                             .frame(width: itemWidth, height: itemHeight, alignment: .top)
                             // Photos scrolled towards an edge fade out before they reach it.
                             .opacity(min(1, max(0, min(x, width - x) / 90)) * fadeIn

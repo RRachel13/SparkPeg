@@ -42,7 +42,6 @@ struct TextSelection {
     mutating func selectAll() { selected = Set(glyphs.map(\.id)) }
 
     var selectedGlyphs: [TextGlyph] { glyphs.filter { selected.contains($0.id) } }
-    var selectedBounds: CGRect? { selectedGlyphs.reduce(nil) { $0?.union($1.rect) ?? $1.rect } }
 
     var text: String {
         var result = ""

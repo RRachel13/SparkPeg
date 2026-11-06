@@ -52,18 +52,20 @@ struct PeggedView: View {
     }
 
     /// The card around the photo: the photo plus the glass inset.
-    static func cardSize(for size: CGSize) -> CGSize {
-        let p = photoSize(for: size)
+    static func cardSize(for item: Pegged) -> CGSize {
+        let p = contentSize(for: item)
         return CGSize(width: p.width + Frame.inset * 2, height: p.height + Frame.inset * 2)
     }
 
     /// Distance from the top of the hanging view (the clip) to the card.
     static let cardOffsetBelowTop: CGFloat = 26 - 12
 
-    private var photoSize: CGSize { Self.photoSize(for: item.thumb.size) }
+    private static func contentSize(for item: Pegged) -> CGSize {
+        item.isTextNote ? item.thumb.size : photoSize(for: item.thumb.size)
+    }
     private var displaySize: CGSize {
         expanded ? CGSize(width: max(1, line.expandedNoteSize.width - Frame.inset * 2),
-                          height: max(1, line.expandedNoteSize.height - Frame.inset * 2)) : photoSize
+                          height: max(1, line.expandedNoteSize.height - Frame.inset * 2)) : Self.contentSize(for: item)
     }
 
     private var card: some View {

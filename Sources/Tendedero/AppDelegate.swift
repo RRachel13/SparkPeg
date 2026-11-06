@@ -423,7 +423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             line.land(id)
             return
         }
-        CaptureFlight.fly(image: image, from: from, to: to, tilt: CGFloat(item.tilt), on: screen, ideaColor: IdeaPalette.color(item.ideaColorHex)) { [weak self] in
+        CaptureFlight.fly(image: image, from: from, to: to, tilt: CGFloat(item.tilt), on: screen) { [weak self] in
             self?.line.land(id)
         }
     }
@@ -449,7 +449,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          visible: line.visibleCount, scroll: line.scroll, pinned: line.pinnedLead)
         let viewTop = Layout.ropeY(x: x, width: width) - Layout.pinAbove
         let cardTop = viewTop + PeggedView.cardOffsetBelowTop
-        let size = PeggedView.cardSize(for: line.items[index].thumb.size)
+        let size = PeggedView.cardSize(for: line.items[index])
         return CGRect(x: panel.frame.minX + x - size.width / 2,
                       y: panel.frame.maxY - cardTop - size.height,
                       width: size.width, height: size.height)
@@ -792,14 +792,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// up, so it is out of the way of the photo you are looking at.
     private func hold(_ id: UUID) {
         guard let item = line.items.first(where: { $0.id == id && !$0.falling && !$0.held }) else { return }
-        line.setHeld(id, true)
-        Held.show(id, url: item.url, line: line) { [weak self] id, frame in self?.hangBack(id, from: frame) }
+        if Held.show(id, url: item.url, line: line, onHangBack: { [weak self] id, frame in
+            self?.hangBack(id, from: frame)
+        }) { line.setHeld(id, true) }
     }
 
-    /// Back onto its clip: the line comes down and the photo flies home.
+    /// Text notes drop onto their clip just like a newly pinned note.
+    /// Photos still fly from the floating window.
     private func hangBack(_ id: UUID, from frame: CGRect) {
+        let screen = NSScreen.screens.first { $0.frame.intersects(frame) }
+        if line.items.first(where: { $0.id == id })?.isTextNote == true {
+            comeDown(on: screen)
+            line.setHeld(id, false)
+            return
+        }
         line.setHeld(id, false)
-        comeDown(on: NSScreen.screens.first { $0.frame.intersects(frame) })
+        comeDown(on: screen)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             self?.fly(id, from: frame)
         }
@@ -932,7 +940,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let item = line.items.first(where: { $0.id == id && !$0.falling }),
               item.isTextNote, let screen = panel.screen else { return }
         guard TextNoteEditor.collapseActive(animated: false) else { return }
-        let collapsed = PeggedView.cardSize(for: item.thumb.size)
+        let collapsed = PeggedView.cardSize(for: item)
         let size = NoteExpansionLayout.expandedSize(collapsed: collapsed, availableHeight: screen.visibleFrame.height)
         line.expandedNoteSize = size
         panel.expandedHeight = size.height + 106
@@ -1047,14 +1055,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Capture now uses a much faster path; remove the old strip before
         // taking the frame instead of waiting for its retract animation.
         panel.orderOut(nil)
-        TextCapture.shared.start { [weak self] text, source, screen in
+        TextCapture.shared.start { [weak self] text, screen in
             guard let self else { return }
             do {
                 self.comeDown(on: screen)
-                let id = try self.line.hangText(text, flying: true)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
-                    self?.fly(id, from: source)
-                }
+                try self.line.hangText(text)
             } catch {
                 NSApp.activate(ignoringOtherApps: true)
                 let alert = NSAlert()
