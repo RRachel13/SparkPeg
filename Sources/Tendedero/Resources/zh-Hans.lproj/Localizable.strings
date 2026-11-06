@@ -1,0 +1,168 @@
+/* Chinese (Simplified). */
+
+/* AppDelegate */
+"Let Tendedero handle your screenshots?" = "让 Tendedero 接管你的截图？";
+"Screenshots will hang on the line the instant you take them, without the floating thumbnail, and will not pile up on your Desktop. Drag one to a folder to keep it, or discard it with the cross. You can turn this off from the menu bar, and your settings come back when Tendedero quits." = "你截图的那一瞬间，图片就会挂到晾衣绳上——没有浮动缩略图，也不会堆到桌面上。拖进文件夹即保留，点叉即丢弃。随时可以从菜单栏关掉，退出 Tendedero 后你的设置会自动还原。";
+"Turn on" = "开启";
+"Not now" = "以后再说";
+"Hide line" = "隐藏晾衣绳";
+"Show line" = "显示晾衣绳";
+"Take everything down" = "全部取下";
+"Put back" = "挂回去";
+"Handle screenshots" = "接管截图";
+"Screenshots hang instantly and skip the Desktop" = "截图即刻挂上，不再经过桌面";
+"Open screenshots folder" = "打开截图文件夹";
+"Sounds" = "声音";
+"Open at login" = "登录时打开";
+"Check for Updates…" = "检查更新…";
+"Quit Tendedero" = "退出 Tendedero";
+"Could not change the login setting" = "无法更改登录项设置";
+"Move Tendedero to the Applications folder and try again." = "请先把 Tendedero 移到「应用程序」文件夹，再试一次。";
+"Keep on line" = "绳上保留";
+"As many as fit" = "放得下的数量";
+"%d photos" = "%d 张";
+"Also watch folders" = "同时监视文件夹";
+"Add Folder…" = "添加文件夹…";
+"Stop Watching" = "停止监视";
+"Watch" = "监视";
+"New images saved to this folder will hang on the line." = "保存到此文件夹的新图片会挂到晾衣绳上。";
+"Shortcut" = "快捷键";
+"Change Shortcut…" = "更改快捷键…";
+"Change Shortcut" = "更改快捷键";
+"None" = "无";
+"Space" = "空格";
+"Press the new shortcut" = "请按下新的快捷键";
+"Escape cancels. Delete removes the shortcut." = "按 Esc 取消，按删除键移除快捷键。";
+"Size" = "大小";
+"Small" = "小";
+"Medium" = "中";
+"Large" = "大";
+"Bring the line down" = "放下晾衣绳";
+"When the pointer rests in the menu bar" = "指针停在菜单栏时";
+"When the pointer rests at either side of the menu bar" = "指针停在顶部左右两侧时";
+"Center area to avoid" = "中间避让宽度";
+"%d pt wide" = "%d 点宽";
+"When something new hangs" = "有新内容挂上时";
+"Over full screen apps" = "在全屏 App 上";
+"Hang copied images" = "挂上复制的图片";
+"Images you copy hang on the line too" = "复制的图片也会挂上绳";
+"Tendedero, hanging copied images" = "Tendedero，正在挂上复制的图片";
+"The line is empty" = "晾衣绳上是空的";
+"%d on the line" = "晾衣绳上有 %d 张";
+
+/* GrabArea */
+"Copy" = "复制";
+"Open" = "打开";
+"Quick Look" = "快速查看";
+"Markup" = "标记";
+"Show in Finder" = "在访达中显示";
+"Share…" = "共享…";
+"Save to Desktop" = "存储到桌面";
+"Discard" = "丢弃";
+"Take down" = "取下";
+"Move to Trash" = "移到废纸篓";
+"Take down everything to the left" = "取下左侧全部";
+"Take down everything to the right" = "取下右侧全部";
+
+/* LineView */
+"Take a screenshot and it will hang here" = "截个图，它就会挂在这里";
+
+/* PeggedView */
+"Copied" = "已复制";
+
+/* Pinning and holding photos */
+"Pin" = "固定";
+"Unpin" = "取消固定";
+"Hold" = "拿在手上";
+"Hang back" = "放回绳上";
+"Hang everything back" = "全部放回绳上";
+"Actual Size" = "实际大小";
+
+/* Text notes */
+"Text note" = "文字便签";
+"Image" = "图片";
+"Ask GPT" = "询问 GPT";
+"Locate original" = "定位到原文";
+"Could not open the original" = "无法打开原文";
+"Archive" = "归档";
+"Archive Library" = "档案库";
+"Archive Library…" = "档案库…";
+"Archive all unpinned cards" = "归档全部未固定卡片";
+"Archive cards to the left" = "归档左侧卡片";
+"Archive cards to the right" = "归档右侧卡片";
+"Choose archive folder…" = "选择档案库位置…";
+"Choose folder" = "选择文件夹";
+"Open folder" = "在 Finder 打开目录";
+"Refresh archive" = "刷新档案库";
+"Archives will be stored in the %@ folder at this location. Existing archives stay in their current folder." = "档案会存放在所选位置下的 %@ 文件夹。已有档案保留在原目录。";
+"The archive is empty" = "档案库为空";
+"Archive a card from its menu to see it here." = "在挂绳上右键卡片，选择「归档」，即可在这里查看。";
+"Could not read the archive" = "无法读取档案库";
+"Could not archive" = "无法归档";
+"Edit note" = "编辑便签";
+"Edit note — saved automatically" = "编辑便签 · 自动保存";
+"Select text and add note" = "选择文字并添加便签";
+"Open to read the full note" = "双击展开并编辑";
+"Could not save note" = "无法保存便签";
+"Copy your changes before closing this window." = "请先复制修改的文字，再关闭窗口。";
+"Could not open GPT" = "无法打开 GPT";
+"Check that the app handling codex links is installed." = "请确认当前聊天软件已安装，并能打开 codex 链接。";
+"Allow screen recording to select text" = "选字需要屏幕录制权限";
+"Enable SideLine in System Settings → Privacy & Security → Screen & System Audio Recording, then press Command-Shift-E again. Text recognition runs on this Mac." = "请在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」中允许 SideLine，然后重新按 ⌘⇧E。文字识别在本机完成。";
+"Open System Settings" = "打开系统设置";
+"Cancel" = "取消";
+"Could not recognize screen text" = "无法识别屏幕文字";
+"Recognizing screen text…" = "正在识别屏幕文字…";
+"Hang note ↵" = "挂上便签 ↵";
+"Cancel Esc" = "取消 Esc";
+"Screen text selection" = "屏幕文字选择";
+"No text found. Press Esc to cancel." = "未识别到文字，按 Esc 退出。";
+"Drag to select · Shift adds ranges · Enter hangs · Esc cancels" = "拖动选字 · Shift 追加选择 · 回车挂上 · Esc 取消";
+"%d characters selected · Shift adds ranges · Enter hangs" = "已选 %d 字 · Shift 追加选择 · 回车挂上";
+"Expanded note" = "展开便签";
+"Saving…" = "正在保存…";
+"Saved automatically" = "已自动保存";
+"Collapse note · Esc" = "收起便签 · Esc";
+"Collapse note" = "收起便签";
+"Note text" = "便签正文";
+"Screen capture was denied by macOS" = "macOS 拒绝了当前版本的屏幕捕获";
+"If SideLine is already enabled, its permission may still belong to an older local build. Remove the old entry, add this SideLine.app, then quit and reopen it. The app will retry capture directly instead of repeatedly asking you to authorize." = "如果 SideLine 已经开启授权，系统可能仍保存着旧编译版本的授权记录。请移除旧项，重新添加当前的 SideLine.app，然后退出并重新打开。软件会直接重试捕获，不再因预检查反复要求授权。";
+"Show this app in Finder" = "在访达中显示当前应用";
+
+"Add or edit remark" = "添加或编辑备注";
+"Note remark" = "便签备注";
+"Write a remark…" = "写下你的备注…";
+"Settings…" = "设置…";
+"SideLine Settings" = "SideLine 设置";
+"Remark text color" = "备注文字颜色";
+"Applies to remarks on every note. The excerpt keeps its original color." = "统一应用于所有便签的备注。摘录文字保留原有颜色。";
+"Restore default color" = "恢复默认颜色";
+
+"Could not pin selected text" = "未能将选中文字挂成便签";
+"Select some text first." = "请先选中一段文字。";
+
+"Pin selected text" = "将选中文字挂成便签";
+"Allow SideLine in System Settings → Privacy & Security → Accessibility, then select the text again and press Command-E." = "请在系统设置 → 隐私与安全性 → 辅助功能中允许 SideLine，然后回到原软件，重新选中文字并按 ⌘E。";
+"No selected text was received. Select text that can be copied and try again, or use Command-Shift-E for screen text." = "没有收到选中文字。请选中可复制的文字后重试，也可按 ⌘⇧E 使用屏幕选字。";
+"The active app changed. Select the text again and retry." = "操作期间切换了软件，请重新选中文字后再试。";
+"Release the shortcut keys and try again." = "请松开快捷键后再试。";
+"The clipboard could not be preserved. Please try again." = "暂时无法保留剪贴板内容，请稍后重试。";
+"A text capture is already in progress." = "正在获取选中文字，请稍候。";
+
+"Idea" = "灵感";
+"Idea text" = "灵感正文";
+"Write down an idea…" = "记下此刻的灵感…";
+"Hang idea" = "挂上去";
+"⌘↩ Hang · Esc Save draft" = "⌘↩ 挂上去 · Esc 暂存";
+"Save draft and close" = "保留草稿并收起";
+"Could not save draft" = "暂时无法保存草稿，请稍后重试。";
+"New idea note…" = "新建灵感便签…";
+
+"Idea note palette" = "灵感便签色彩库";
+"New idea notes pick a color at random. Existing notes keep their colors." = "新灵感便签随机选色，已挂上的便签保留原色。";
+"Six-digit hex colors, separated by commas or spaces" = "输入六位色号，用逗号、空格或换行分隔";
+"Save palette" = "保存色彩库";
+"Restore default palette" = "恢复默认色彩库";
+"Enter at least one six-digit hex color, separated by commas or spaces." = "请输入至少一个六位色号，并用逗号或空格分隔。";
+"Palette saved" = "已保存，将用于新灵感便签。";
+"Default palette restored" = "已恢复默认色彩库。";
